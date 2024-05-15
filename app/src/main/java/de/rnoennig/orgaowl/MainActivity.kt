@@ -6,33 +6,46 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.annotation.WorkerThread
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Divider
+import androidx.compose.material3.DrawerState
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -40,36 +53,38 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.asLiveData
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LiveData
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Relation
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import androidx.room.Update
 import dagger.Module
 import dagger.Provides
@@ -88,8 +103,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToInt
 
 data class TaskDetails(
     var uid: Int,
@@ -100,10 +117,29 @@ data class TaskDetails(
 
 @Entity
 data class Task(
-    @PrimaryKey(autoGenerate = true) val uid: Int = 0,
-    @ColumnInfo(name = "name") val name: String,
-    @ColumnInfo(name = "done") val done: Boolean
+    @PrimaryKey val uuid: UUID = UUID.randomUUID(),
+    @ColumnInfo(name = "name") val name: String = "Unnamed Task",
+    @ColumnInfo(name = "done") val done: Boolean = false,
+    @ColumnInfo(name = "modified_at") val modifiedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "tasklist") val tasklist: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
 )
+
+@Entity
+data class Tasklist(
+    @PrimaryKey val uuid: UUID = UUID.randomUUID(),
+    @ColumnInfo(name = "name") val name: String = "Unnamed List",
+    @ColumnInfo(name = "modified_at") val modifiedAt: Long = System.currentTimeMillis()
+)
+
+data class TasklistWithTasks(
+    @Embedded val tasklist: Tasklist,
+    @Relation(
+        parentColumn = "uuid",
+        entityColumn = "tasklist"
+    )
+    val tasks: List<Task>
+)
+
 
 @Dao
 interface TaskDao {
@@ -120,22 +156,43 @@ interface TaskDao {
     fun deleteTask(task: Task)
 }
 
+@Dao
+interface TasklistDao {
+    @Query("SELECT * FROM Tasklist")
+    fun getAllTasklists(): Flow<List<Tasklist>>
+
+    @Transaction
+    @Query("SELECT * FROM Tasklist where name = :taskListName")
+    fun getTasklistWithTasks(taskListName: String): List<TasklistWithTasks>
+
+
+    @Query("SELECT * FROM Tasklist")
+    fun getAllTasklistsWithTasks(): Flow<List<TasklistWithTasks>>
+}
+
 @Database(entities = [Task::class], version = 1)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
+    abstract fun tasklistDao(): TasklistDao
 }
 
 
 data class TasklistUiState(
-    val taskList: List<Task> = listOf(),
+    val availableTasklists: List<TasklistWithTasks>? = null,
     val isLoading: Boolean = false,
-    val errorMsg: String? = null
+    val errorMsg: String? = null,
+    val currentList: UUID? = null
 ) {
+
 
 }
 
-class TaskRepository(private val taskDao: TaskDao) {
+class TaskRepository(
+    private val taskDao: TaskDao,
+    private val tasklistDao: TasklistDao) {
     fun getAllTasks(): Flow<List<Task>> = taskDao.getAllTasks()
+
+    fun getAllTasklists(): Flow<List<TasklistWithTasks>> = tasklistDao.getAllTasklistsWithTasks()
 
     suspend fun insertTask(task: Task) = taskDao.insertTask(task)
 
@@ -156,19 +213,14 @@ class TaskViewModel @Inject constructor(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy( isLoading = true) }
-            taskRepository.getAllTasks().collect { listOfItems ->
-                _uiState.update { it.copy( isLoading = false, taskList = listOfItems) }
+            taskRepository.getAllTasklists().collect { listOftasklists ->
+                _uiState.update { it.copy( isLoading = false, availableTasklists = listOftasklists) }
             }
         }
     }
 
-    fun fetchTasks() = {
-        viewModelScope.launch {
-            _uiState.update { it.copy( isLoading = true) }
-            taskRepository.getAllTasks().collect { listOfItems ->
-                _uiState.update { it.copy( isLoading = false, taskList = listOfItems) }
-            }
-        }
+    fun setCurrentList(currentList: UUID) {
+        _uiState.update { it.copy( currentList = currentList) }
     }
 
     fun addTask(task: Task) = viewModelScope.launch(Dispatchers.IO) { taskRepository.insertTask(task) }
@@ -197,7 +249,10 @@ object AppModule {
     fun provideTaskDao(appDatabase: AppDatabase): TaskDao = appDatabase.taskDao()
 
     @Provides
-    fun provideItemRepository(taskDao: TaskDao): TaskRepository = TaskRepository(taskDao)
+    fun provideTasklistDao(appDatabase: AppDatabase): TasklistDao = appDatabase.tasklistDao()
+
+    @Provides
+    fun provideItemRepository(taskDao: TaskDao, tasklistDao: TasklistDao): TaskRepository = TaskRepository(taskDao, tasklistDao)
 }
 
 @HiltAndroidApp
@@ -259,10 +314,17 @@ fun App(
     viewModel: TaskViewModel,
     modifier: Modifier = Modifier
 ) {
+    val state = viewModel.uiState.collectAsState()
     OrgaOwlTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             TasklistsDetailsView(
-                viewModel
+                state.value,
+                onTaskAdd = { newTask ->
+                    viewModel.addTask(newTask)
+                },
+                onUpdateTask = { newTaskDetails ->
+                    viewModel.updateTask(newTaskDetails)
+                }
             )
         }
     }
@@ -283,23 +345,57 @@ fun getInsertionIndex(newTask: Task, taskList: List<Task>): Int {
 /**
  * Shows a single task list
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TasklistsDetailsView(
-    viewModel: TaskViewModel,
+    uiState: TasklistUiState,
+    onTaskAdd: (Task) -> Unit,
+    onUpdateTask: (Task) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Model
-    val state = viewModel.uiState.collectAsState()
+    val currentListUuid = remember { mutableStateOf(uiState.currentList) }
+    val currentTasklist = uiState.availableTasklists?.find { it.tasklist.uuid == currentListUuid.value }
     val taskList = remember {
         mutableStateListOf<Task>().apply {
-            addAll(state.value.taskList.orEmpty().sortedBy { it.done })
+            addAll(currentTasklist?.tasks.orEmpty().sortedWith(compareBy<Task> { it.done }.thenByDescending { it.modifiedAt }))
         }
     }
     //val taskList = viewModel.taskList
 
     // UI State
     val showAddTaskDialog = remember { mutableStateOf(false) }
+    val showUpdateTaskDialog = remember { mutableStateOf(false) }
+    val addUpdateTaskDialogTask = remember { mutableStateOf(Task()) }
+    val addUpdateTaskDialogCallback = remember { mutableStateOf({ task: Task -> null }) }
+    val drawerState: DrawerState = rememberDrawerState(DrawerValue.Closed)
+    ModalNavigationDrawer(
+        drawerContent = {
+            ModalDrawerSheet (
+                modifier = Modifier
+                    .width(200.dp)
+                    .fillMaxHeight()
+            ) {
+                Text("Lists", modifier = Modifier.padding(22.dp))
+                Divider()
+                Column {
+                    uiState.availableTasklists?.forEach { availableTasklist ->
+                        NavigationDrawerItem(
+                            label = { Text(text = availableTasklist.tasklist.name) },
+                            selected = availableTasklist.tasklist.uuid == uiState.currentList,
+                            onClick = {
+                                currentListUuid.value = availableTasklist.tasklist.uuid
+                                taskList.clear()
+                                taskList.addAll(currentTasklist?.tasks.orEmpty().sortedWith(compareBy<Task> { it.done }.thenByDescending { it.modifiedAt }))
+
+                            }
+                        )
+                    }
+                }
+            }
+        },
+        drawerState = drawerState
+    ) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -308,7 +404,15 @@ fun TasklistsDetailsView(
                     titleContentColor = MaterialTheme.colorScheme.primary,
                 ),
                 title = {
-                    Text("OrgaOwl" + if (state.value.isLoading) " (loading...)" else "" )
+                    Row (verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { /* do something */ }) {
+                            Icon(
+                                imageVector = Icons.Filled.Menu,
+                                contentDescription = "Localized description"
+                            )
+                        }
+                        Text(currentTasklist?.tasklist?.name + if (uiState.isLoading) " (loading...)" else "" )
+                    }
                 },
                 actions = {
                     IconButton(onClick = { /* do something */ }) {
@@ -317,11 +421,23 @@ fun TasklistsDetailsView(
                             contentDescription = "Localized description"
                         )
                     }
-                },
+                }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddTaskDialog.value = true }) {
+            FloatingActionButton(onClick = {
+                showAddTaskDialog.value = true
+                addUpdateTaskDialogTask.value = Task()
+                addUpdateTaskDialogCallback.value = { newTask:Task ->
+                    // move new task at the top or at the top of done tasks
+                    val newIdx = getInsertionIndex(newTask, taskList)
+                    taskList.add(newIdx, newTask)
+
+                    onTaskAdd.invoke(newTask)
+
+                    null
+                }
+            }) {
                 Icon(Icons.Filled.Add, contentDescription = "Add task.")
             }
         }
@@ -330,10 +446,10 @@ fun TasklistsDetailsView(
             taskList,
             onTaskClick = {
                 val idx = taskList.indexOf(it)
-                val new = taskList.get(idx).copy(done = !it.done)
+                val new = taskList.get(idx).copy(done = !it.done, modifiedAt = System.currentTimeMillis())
 
                 // update task via viewmodel
-                viewModel.updateTask(new)
+                onUpdateTask.invoke(new)
 
                 // TODO rest might be unnecessary if a stable sort algo is used
 
@@ -344,42 +460,59 @@ fun TasklistsDetailsView(
                 val newIdx = getInsertionIndex(new, taskList)
                 taskList.add(newIdx, new)
             },
-            modifier = modifier
+            onTaskLongClick = {
+                showUpdateTaskDialog.value = true
+                addUpdateTaskDialogTask.value = it
+                addUpdateTaskDialogCallback.value = { task ->
+                    val idx = taskList.indexOfFirst { it.uuid == task.uuid }
+                    onUpdateTask.invoke(task)
+                    taskList.set(idx, task)
+
+                    null
+                }
+            },
+            modifier = Modifier
                 .padding(innerPadding)
         )
-        if (showAddTaskDialog.value) {
-            DialogAddTask(
-                viewModel,
+        if (showAddTaskDialog.value || showUpdateTaskDialog.value) {
+            DialogAddUpdateTask(
+                uiState,
+                addUpdateTaskDialogTask.value,
                 onDismissRequest = { showAddTaskDialog.value = false },
-                onCreateTask = { newTask ->
-                    // move new task at the top or at the top of done tasks
-                    val newIdx = getInsertionIndex(newTask, taskList)
-                    taskList.add(newIdx, newTask)
-
-                    viewModel.addTask(newTask)
-
+                onSubmitTask = {
+                    addUpdateTaskDialogCallback.value.invoke(it)
                     showAddTaskDialog.value = false
+                    showUpdateTaskDialog.value = false
                 })
         }
+    }
     }
 }
 
 /**
  * Shows the scrollable list of tasks
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TasksListView(
     taskList: List<Task>,
     onTaskClick: (Task) -> Unit,
+    onTaskLongClick: (Task) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LazyColumn(modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier
+            .fillMaxSize()
+            .padding(6.dp)
+    ) {
         items(
             items = taskList,
-            key = { task -> task.uid }
-        ) {
-            ListItem(it,
-                onClick = onTaskClick
+            key = { task -> task.uuid }
+        ) { task ->
+            ListItem(
+                task,
+                onClick = { onTaskClick(task) },
+                onLongClick = { onTaskLongClick(task) }
             )
         }
     }
@@ -388,22 +521,43 @@ fun TasksListView(
 /**
  * Renders a single task item in the list
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ListItem(task: Task, modifier: Modifier = Modifier, onClick: ((Task) -> Unit)? = null) {
+fun ListItem(
+    task: Task,
+    onClick: ((Task) -> Unit)? = null,
+    onLongClick: ((Task) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    var offsetX by remember { mutableStateOf(0f) }
     Card(
+
         elevation = CardDefaults.cardElevation(
             defaultElevation = 6.dp
         ),
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .height(80.dp)
-            .clickable(
+            .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = rememberRipple(bounded = true)
-            ) {
-                onClick?.invoke(task)
+                indication = rememberRipple(bounded = true),
+                onClick = { onClick?.invoke(task) },
+                onLongClick = { onLongClick?.invoke(task) }
+            )
+            .offset {
+                IntOffset(
+                    offsetX
+                        .coerceIn(-100.dp.toPx(), 0f)
+                        .roundToInt(), 0
+                )
             }
-            .padding(6.dp)
+            .draggable(
+                orientation = Orientation.Horizontal,
+                state = rememberDraggableState { delta ->
+                    offsetX += delta
+                }
+            )
+            .padding(bottom = 6.dp)
     ) {
         Text(
             modifier = Modifier
@@ -423,14 +577,15 @@ fun ListItem(task: Task, modifier: Modifier = Modifier, onClick: ((Task) -> Unit
  * Create a new task with the input
  */
 @Composable
-fun DialogAddTask(
-    viewModel: TaskViewModel,
+fun DialogAddUpdateTask(
+    uiState: TasklistUiState,
+    task: Task,
     onDismissRequest: () -> Unit,
-    onCreateTask: (Task) -> Unit,
+    onSubmitTask: (Task) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val addDoneTask = remember { mutableStateOf(false) }
-    var taskName = remember { mutableStateOf("New task") }
+    val addDoneTask = remember { mutableStateOf(task.done) }
+    var taskName = remember { mutableStateOf(task.name) }
     Dialog(onDismissRequest = onDismissRequest) {
         Surface (
             modifier = Modifier.padding(6.dp)
@@ -466,7 +621,7 @@ fun DialogAddTask(
                 ) {
                     Button(
                         onClick = {
-                            onCreateTask(Task(uid = 0, name = taskName.value, done = addDoneTask.value))
+                            onSubmitTask(task.copy(name = taskName.value, done = addDoneTask.value))
                         }
                     ) {
                         Text(
@@ -484,18 +639,27 @@ fun DialogAddTask(
 @Preview(showBackground = true)
 @Composable
 fun DefaultPreview() {
-    val taskList = listOf<TaskDetails>(
-        TaskDetails(1, "Wäsche", false),
-        TaskDetails(2, "Android compose lernen", true),
-        TaskDetails(3, "Android compose lernen 2", false),
-        TaskDetails(4, "Android compose lernen 3", false),
-        TaskDetails(5, "Android compose lernen 3", false),
-        TaskDetails(6, "Android compose lernen 3", false),
-        TaskDetails(7, "Android compose lernen 3", false),
-        TaskDetails(8, "Android compose lernen 3", false),
-        TaskDetails(9, "Android compose lernen 3", false),
-        TaskDetails(10, "Android compose lernen 3", false),
-        TaskDetails(11)
+    val uuid = UUID.randomUUID()
+    val uiState = TasklistUiState(
+        availableTasklists = listOf(
+            TasklistWithTasks(
+                tasklist = Tasklist(uuid = uuid, name = "Einkaufen"),
+                tasks = listOf<Task>(
+                    Task(name = "Möhren"),
+                    Task(name = "Äpfel"),
+                    Task(name = "Taschentücher")
+                )
+            ),
+            TasklistWithTasks(
+                tasklist = Tasklist(name = "Asiamarkt"),
+                tasks = listOf<Task>(
+                    Task(name = "Sesamöl"),
+                    Task(name = "Sojasoße"),
+                    Task(name = "Tofu")
+                )
+            ),
+        ),
+        currentList = uuid
     )
-    //TasklistsDetailsView(taskList)
+    TasklistsDetailsView(uiState, {}, {})
 }
