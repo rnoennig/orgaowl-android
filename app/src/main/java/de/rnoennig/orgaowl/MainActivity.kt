@@ -7,9 +7,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -28,8 +32,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -37,8 +44,6 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
@@ -56,29 +61,30 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
@@ -89,9 +95,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
+import androidx.room.AutoMigration
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -121,6 +129,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -139,7 +148,7 @@ data class TaskDetails(
 data class Task(
     @PrimaryKey val uuid: UUID = UUID.randomUUID(),
     @ColumnInfo(name = "name") val name: String = "Unnamed Task",
-    @ColumnInfo(name = "extra") val extra: String = "",
+    @ColumnInfo(name = "extra", defaultValue = "") val extra: String = "",
     @ColumnInfo(name = "done") val done: Boolean = false,
     @ColumnInfo(name = "modified_at") val modifiedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "tasklist") val tasklist: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
@@ -158,7 +167,7 @@ data class TasklistWithTasks(
         parentColumn = "uuid",
         entityColumn = "tasklist"
     )
-    val tasks: List<Task>
+    val tasks: List<Task> = listOf()
 )
 
 
@@ -202,7 +211,14 @@ interface TasklistDao {
     abstract fun deleteTasklist(tasklist: Tasklist)
 }
 
-@Database(entities = [Task::class, Tasklist::class], version = 2)
+@Database(
+    entities = [Task::class, Tasklist::class],
+    version = 2,
+    autoMigrations = [
+        AutoMigration (from = 1, to = 2)
+    ],
+    exportSchema = true
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun tasklistDao(): TasklistDao
@@ -219,28 +235,45 @@ data class TasklistUiState(
 
 }
 
+interface ITaskRepository {
+    fun getAllTasks(): Flow<List<Task>>
+    fun getAllTasklists(): Flow<List<TasklistWithTasks>>
+
+    suspend fun insertTask(task: Task)
+
+    suspend fun updateTask(task: Task)
+
+    suspend fun deleteTask(task: Task)
+
+    suspend fun insertTasklist(tasklist: Tasklist)
+
+    suspend fun updateTasklist(tasklist: Tasklist)
+
+    suspend fun deleteTasklist(tasklist: Tasklist)
+}
+
 class TaskRepository(
     private val taskDao: TaskDao,
     private val tasklistDao: TasklistDao
-) {
-    fun getAllTasks(): Flow<List<Task>> = taskDao.getAllTasks()
+) : ITaskRepository {
+    override fun getAllTasks(): Flow<List<Task>> = taskDao.getAllTasks()
 
-    fun getAllTasklists(): Flow<List<TasklistWithTasks>> = tasklistDao.getAllTasklistsWithTasks()
+    override fun getAllTasklists(): Flow<List<TasklistWithTasks>> = tasklistDao.getAllTasklistsWithTasks()
 
-    suspend fun insertTask(task: Task) = taskDao.insertTask(task)
+    override suspend fun insertTask(task: Task) = taskDao.insertTask(task)
 
-    suspend fun updateTask(task: Task) = taskDao.updateTask(task)
+    override suspend fun updateTask(task: Task) = taskDao.updateTask(task)
 
-    suspend fun deleteTask(task: Task) = taskDao.deleteTask(task)
-    suspend fun insertTasklist(tasklist: Tasklist) = tasklistDao.insertTasklist(tasklist)
-    suspend fun updateTasklist(tasklist: Tasklist) = tasklistDao.updateTasklist(tasklist)
-    suspend fun deleteTasklist(tasklist: Tasklist) = tasklistDao.deleteTasklist(tasklist)
+    override suspend fun deleteTask(task: Task) = taskDao.deleteTask(task)
+    override suspend fun insertTasklist(tasklist: Tasklist) = tasklistDao.insertTasklist(tasklist)
+    override suspend fun updateTasklist(tasklist: Tasklist) = tasklistDao.updateTasklist(tasklist)
+    override suspend fun deleteTasklist(tasklist: Tasklist) = tasklistDao.deleteTasklist(tasklist)
 }
 
 @HiltViewModel
 class TaskViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
-    private val taskRepository: TaskRepository
+    private val taskRepository: ITaskRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TasklistUiState())
@@ -260,10 +293,58 @@ class TaskViewModel @Inject constructor(
     }
 
     fun addTask(task: Task) =
-        viewModelScope.launch(Dispatchers.IO) { taskRepository.insertTask(task) }
+        viewModelScope.launch(Dispatchers.IO) {
+            taskRepository.insertTask(task)
+
+            taskRepository.getAllTasklists().collect() { allTasklists ->
+                _uiState.update { it.copy(
+                    availableTasklists = allTasklists
+                ) }
+            }
+            /*
+            val currentTasklist = uiState.value.availableTasklists?.find { it.tasklist.uuid == uiState.value.currentList }
+            _uiState.update { it.copy(
+                availableTasklists = it.availableTasklists?.map {
+                    if (it.tasklist.uuid == currentTasklist?.tasklist?.uuid) {
+                        it.copy(tasks = it.tasks + task)
+                    } else {
+                        it
+                    }
+                }
+            )}
+            */
+        }
 
     fun updateTask(task: Task) =
-        viewModelScope.launch(Dispatchers.IO) { taskRepository.updateTask(task) }
+        viewModelScope.launch(Dispatchers.IO) {
+            taskRepository.updateTask(task)
+            val currentTasklist = uiState.value.availableTasklists?.find { it.tasklist.uuid == uiState.value.currentList }
+
+            _uiState.update { it.copy(
+                availableTasklists = uiState.value.availableTasklists?.map {
+                    if (it.tasklist.uuid == currentTasklist?.tasklist?.uuid) {
+                        it.copy(tasks = it.tasks.map {
+                            if (it.uuid == task.uuid) {
+                                task
+                            } else {
+                                it
+                            }
+                        })
+                    } else {
+                        it
+                    }
+                }
+            )}
+
+            /*
+            taskRepository.getAllTasklists().collect() { allTasklists ->
+                _uiState.update { it.copy(
+                    availableTasklists = allTasklists
+                )}
+            }
+            */
+
+        }
 
     fun deleteTask(task: Task) =
         viewModelScope.launch(Dispatchers.IO) { taskRepository.deleteTask(task) }
@@ -271,24 +352,35 @@ class TaskViewModel @Inject constructor(
     fun addTasklist(tasklist: Tasklist) {
         viewModelScope.launch(Dispatchers.IO) {
             taskRepository.insertTasklist(tasklist)
-            val availableTasklists = uiState.value.availableTasklists.orEmpty().toMutableList()
-            availableTasklists.add(TasklistWithTasks(tasklist = tasklist, tasks = listOf()))
-            _uiState.update { it.copy(availableTasklists = availableTasklists) }
+            taskRepository.getAllTasklists().collect() { allTasklists ->
+                _uiState.update { it.copy(
+                    currentList = tasklist.uuid,
+                    availableTasklists = allTasklists
+                ) }
+            }
         }
     }
 
-    fun updateTasklist(tasklist: Tasklist) {
+    fun updateTasklist(updatedTaskList: Tasklist) {
         viewModelScope.launch(Dispatchers.IO) {
-            taskRepository.updateTasklist(tasklist)
+            taskRepository.updateTasklist(updatedTaskList)
+            taskRepository.getAllTasklists().collect() { allTasklists ->
+                _uiState.update { it.copy(
+                    availableTasklists = allTasklists
+                )}
+            }
         }
     }
 
     fun deleteTasklist(tasklist: Tasklist) {
         viewModelScope.launch(Dispatchers.IO) {
             taskRepository.deleteTasklist(tasklist)
-            _uiState.update { it.copy(
-                currentList = uiState.value.availableTasklists?.firstOrNull()?.tasklist?.uuid
-            )}
+            taskRepository.getAllTasklists().collect() { allTasklists ->
+                _uiState.update { it.copy(
+                    currentList = allTasklists.first().tasklist.uuid,
+                    availableTasklists = allTasklists
+                )}
+            }
         }
     }
 
@@ -307,7 +399,8 @@ object AppModule {
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(
             context,
-            AppDatabase::class.java, "orgaowl"
+            AppDatabase::class.java, "orgaowl",
+
         )
             .build()
 
@@ -318,7 +411,7 @@ object AppModule {
     fun provideTasklistDao(appDatabase: AppDatabase): TasklistDao = appDatabase.tasklistDao()
 
     @Provides
-    fun provideItemRepository(taskDao: TaskDao, tasklistDao: TasklistDao): TaskRepository =
+    fun provideItemRepository(taskDao: TaskDao, tasklistDao: TasklistDao): ITaskRepository =
         TaskRepository(taskDao, tasklistDao)
 }
 
@@ -373,11 +466,11 @@ fun App(
     viewModel: TaskViewModel,
     modifier: Modifier = Modifier
 ) {
-    val state = viewModel.uiState.collectAsState()
+    val state = viewModel.uiState.collectAsStateWithLifecycle()
     OrgaOwlTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             TasklistsDetailsView(
-                state.value,
+                state,
                 onChangeCurrentTasklist = { newActiveTasklistUUID ->
                     viewModel.setCurrentTasklist(newActiveTasklistUUID)
                 },
@@ -419,7 +512,7 @@ fun getInsertionIndex(newTask: Task, taskList: List<Task>): Int {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TasklistsDetailsView(
-    uiState: TasklistUiState,
+    uiState: State<TasklistUiState>,
     onChangeCurrentTasklist: (UUID) -> Unit,
     onTaskAdd: (Task) -> Unit,
     onUpdateTask: (Task) -> Unit,
@@ -429,11 +522,10 @@ fun TasklistsDetailsView(
     modifier: Modifier = Modifier
 ) {
     // Model
-    val currentTasklist = uiState.availableTasklists?.find { it.tasklist.uuid == uiState.currentList }
+    val currentTasklist = uiState.value.availableTasklists?.find { it.tasklist.uuid == uiState.value.currentList }
     val taskList =
             currentTasklist?.tasks.orEmpty()
                 .sortedWith(compareBy<Task> { it.done }.thenByDescending { it.modifiedAt })
-                .toMutableStateList()
 
     // Local UI State
     val showAddTaskDialog = remember { mutableStateOf(false) }
@@ -447,6 +539,12 @@ fun TasklistsDetailsView(
     val showDropDown = remember { mutableStateOf(false) }
     val drawerState: DrawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val fabVisibility by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0
+        }
+    }
     ModalNavigationDrawer(
         drawerContent = {
                 ModalDrawerSheet(
@@ -461,14 +559,14 @@ fun TasklistsDetailsView(
                     )
                     Divider()
                     Column {
-                        uiState.availableTasklists?.forEach { availableTasklist ->
+                        uiState.value.availableTasklists?.forEach { availableTasklist ->
                             val onNavClick = {
                                 onChangeCurrentTasklist.invoke(availableTasklist.tasklist.uuid)
                                 scope.launch { drawerState.close() }
                             }
                             NavigationDrawerItem(
                                 label = { Text(text = availableTasklist.tasklist.name) },
-                                selected = availableTasklist.tasklist.uuid == uiState.currentList,
+                                selected = availableTasklist.tasklist.uuid == uiState.value.currentList,
                                 onClick = {
                                     onChangeCurrentTasklist.invoke(availableTasklist.tasklist.uuid)
                                     scope.launch { drawerState.close() }
@@ -479,7 +577,9 @@ fun TasklistsDetailsView(
                     Image(
                         painter = painterResource(id = R.drawable.ic_launcher_foreground),
                         contentDescription = "",
-                        modifier = Modifier.align(Alignment.CenterHorizontally).fillMaxSize(),
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .fillMaxSize(),
                         alignment = Alignment.BottomCenter
                     )
                 }
@@ -507,7 +607,7 @@ fun TasklistsDetailsView(
                                 )
                             }
                             Text(
-                                text = (if (currentTasklist != null) currentTasklist?.tasklist?.name else "") + if (uiState.isLoading) " (loading...)" else ""
+                                text = (if (currentTasklist != null) currentTasklist?.tasklist?.name else "") + if (uiState.value.isLoading) " (loading...)" else ""
                             )
                             DropdownMenu(
                                 expanded = showDropDown.value,
@@ -576,22 +676,43 @@ fun TasklistsDetailsView(
                 )
             },
             floatingActionButton = {
-                uiState.currentList?.let {
-                    FloatingActionButton(
-                        onClick = {
-                        showAddTaskDialog.value = true
-                        addUpdateTaskDialogTask.value = Task(tasklist = uiState.currentList!!, name = "")
-                        addUpdateTaskDialogCallback.value = { newTask: Task ->
-                            // move new task at the top or at the top of done tasks
-                            val newIdx = getInsertionIndex(newTask, taskList)
-                            taskList.add(newIdx, newTask)
+                uiState.value.currentList?.let {
+                    val density = LocalDensity.current
+                    AnimatedVisibility(
+                        modifier = modifier,
+                        visible = fabVisibility,
+                        enter = slideInVertically {
+                            with(density) { 40.dp.roundToPx() }
+                        } + fadeIn(),
+                        exit = fadeOut(
+                            animationSpec = keyframes {
+                                this.durationMillis = 120
+                            }
+                        )
+                    ) {
+                        FloatingActionButton(
+                            onClick = {
+                                showAddTaskDialog.value = true
+                                addUpdateTaskDialogTask.value =
+                                    Task(tasklist = uiState.value.currentList!!, name = "")
+                                addUpdateTaskDialogCallback.value = { newTask: Task ->
+                                    // move new task at the top or at the top of done tasks
+                                    //val newIdx = getInsertionIndex(newTask, taskList)
+                                    //taskList.add(newIdx, newTask)
 
-                            onTaskAdd.invoke(newTask)
-
-                            null
+                                    onTaskAdd.invoke(
+                                        newTask.copy(
+                                            tasklist = newTask.tasklist,
+                                            name = newTask.name,
+                                            extra = newTask.extra,
+                                            modifiedAt = System.currentTimeMillis()
+                                        )
+                                    )
+                                    null
+                                }
+                            }) {
+                            Icon(Icons.Filled.Add, contentDescription = "Add item")
                         }
-                    }) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add item")
                     }
                 }
             }
@@ -599,39 +720,40 @@ fun TasklistsDetailsView(
             TasksListView(
                 taskList,
                 onTaskClick = {
-                    val idx = taskList.indexOf(it)
-                    val new = taskList.get(idx)
-                        .copy(done = !it.done, modifiedAt = System.currentTimeMillis())
+                    //val idx = taskList.indexOf(it)
+                    //val new = taskList.get(idx)
+
 
                     // update task via viewmodel
-                    onUpdateTask.invoke(new)
+                    onUpdateTask.invoke(it.copy(done = !it.done, modifiedAt = System.currentTimeMillis()))
 
                     // TODO rest might be unnecessary if a stable sort algo is used
 
                     // first remove the clicked task
-                    taskList.removeAt(idx)
+                    //taskList.removeAt(idx)
 
                     // then insert task at the correct pos to preserve the rest of the listitem views
-                    val newIdx = getInsertionIndex(new, taskList)
-                    taskList.add(newIdx, new)
+                    //val newIdx = getInsertionIndex(new, taskList)
+                    //taskList.add(newIdx, new)
                 },
                 onTaskLongClick = {
                     showUpdateTaskDialog.value = true
                     addUpdateTaskDialogTask.value = it
                     addUpdateTaskDialogCallback.value = { task ->
-                        val idx = taskList.indexOfFirst { it.uuid == task.uuid }
+                        //val idx = taskList.indexOfFirst { it.uuid == task.uuid }
                         onUpdateTask.invoke(task)
-                        taskList.set(idx, task)
+                        //taskList.set(idx, task)
 
                         null
                     }
                 },
-                modifier = Modifier
+                listState = listState,
+                modifier = modifier
                     .padding(innerPadding)
             )
             if (showAddTaskDialog.value || showUpdateTaskDialog.value) {
                 DialogAddUpdateTask(
-                    uiState,
+                    uiState.value,
                     addUpdateTaskDialogTask.value,
                     showAddTaskDialog.value,
                     onDismissRequest = {
@@ -646,7 +768,7 @@ fun TasklistsDetailsView(
             }
             if (showAddTasklistDialog.value || showUpdateTasklistDialog.value) {
                 DialogAddUpdateTasklist(
-                    uiState,
+                    uiState.value,
                     addUpdateTasklistDialogTasklist.value,
                     showAddTasklistDialog.value,
                     onDismissRequest = {
@@ -672,11 +794,13 @@ fun TasksListView(
     taskList: List<Task>,
     onTaskClick: (Task) -> Unit,
     onTaskLongClick: (Task) -> Unit,
+    listState: LazyListState,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
+        state = listState,
+        modifier = modifier
             .fillMaxSize()
             .padding(6.dp)
     ) {
@@ -689,13 +813,14 @@ fun TasksListView(
                 onClick = { onTaskClick(task) },
                 onLongClick = { onTaskLongClick(task) }
             )
-            if (index < taskList.lastIndex && index > 0)
+            if (index < taskList.lastIndex)
                 Divider(thickness = 1.dp)
         }
     }
 }
 
 /**
+ * Renders a single task item in the list
  * Renders a single task item in the list
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -741,7 +866,8 @@ fun ListItem(
                 text = task.name,
                 style = LocalTextStyle.current.copy(
                     textDecoration = if (task.done) TextDecoration.LineThrough else TextDecoration.None,
-                    fontSize = 24.sp
+                    fontSize = 24.sp,
+                    color = if (task.done) LocalTextStyle.current.color.compositeOver(Color.Gray) else LocalTextStyle.current.color
                 )
             )
             Spacer(Modifier.weight(1f))
@@ -750,7 +876,12 @@ fun ListItem(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
                     .height(80.dp)
-                    .wrapContentHeight()
+                    .wrapContentHeight(),
+                style = LocalTextStyle.current.copy(
+                    textDecoration = if (task.done) TextDecoration.LineThrough else TextDecoration.None,
+                    fontSize = 24.sp,
+                    color = if (task.done) LocalTextStyle.current.color.compositeOver(Color.Gray) else LocalTextStyle.current.color
+                )
             )
         }
 
@@ -760,6 +891,7 @@ fun ListItem(
 /**
  * Create a new task with the input
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun DialogAddUpdateTask(
     uiState: TasklistUiState,
@@ -773,6 +905,9 @@ fun DialogAddUpdateTask(
     var taskName = remember { mutableStateOf(task.name) }
     var taskExtra = remember { mutableStateOf(task.extra) }
     val focusRequester = FocusRequester()
+    val submitTask: () -> Unit = {
+        onSubmitTask.invoke(task.copy(name = taskName.value, extra = taskExtra.value, done = addDoneTask.value))
+    }
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
@@ -796,7 +931,8 @@ fun DialogAddUpdateTask(
                         onValueChange = { taskName.value = it },
                         label = { Text("Item name") },
                         placeholder = { Text("Enter Item name") },
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { submitTask.invoke() }),
                         modifier = Modifier.focusRequester(focusRequester)
                     )
                 }
@@ -809,7 +945,9 @@ fun DialogAddUpdateTask(
                     OutlinedTextField(value = taskExtra.value,
                         onValueChange = { taskExtra.value = it },
                         label = { Text("Extra") },
-                        placeholder = { Text("Enter extra infos") }
+                        placeholder = { Text("Enter extra infos") },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { submitTask.invoke() })
                     )
                 }
                 Row(
@@ -820,7 +958,7 @@ fun DialogAddUpdateTask(
                 ) {
                     Button(
                         onClick = {
-                            onSubmitTask(task.copy(name = taskName.value, extra = taskExtra.value, done = addDoneTask.value))
+                            submitTask.invoke()
                         }
                     ) {
                         Text(
@@ -844,6 +982,9 @@ fun DialogAddUpdateTasklist(
 ) {
     var tasklistName = remember { mutableStateOf(tasklist.name) }
     val focusRequester = FocusRequester()
+    val submitTasklist: () -> Unit = {
+        onSubmitTask(tasklist.copy(name = tasklistName.value))
+    }
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
@@ -867,7 +1008,8 @@ fun DialogAddUpdateTasklist(
                         onValueChange = { tasklistName.value = it },
                         label = { Text("List name") },
                         placeholder = { Text("Enter list name") },
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { submitTasklist.invoke() }),
                         modifier = Modifier.focusRequester(focusRequester)
                     )
                 }
@@ -879,7 +1021,7 @@ fun DialogAddUpdateTasklist(
                 ) {
                     Button(
                         onClick = {
-                            onSubmitTask(tasklist.copy(name = tasklistName.value))
+                            submitTasklist.invoke()
                         }
                     ) {
                         Text(
@@ -892,32 +1034,78 @@ fun DialogAddUpdateTasklist(
     }
 }
 
+class ListBackedTaskRepository(
+    private val allTasklists: MutableList<Tasklist> = mutableListOf(),
+    private val allTasks: MutableList<Task> = mutableListOf()
+) : ITaskRepository {
+
+    override fun getAllTasks(): Flow<List<Task>> {
+            return flowOf(allTasks)
+        }
+
+        override fun getAllTasklists(): Flow<List<TasklistWithTasks>> {
+            return flowOf(allTasklists.map {  tasklist ->
+                TasklistWithTasks(
+                    tasklist = tasklist,
+                    tasks = allTasks.filter { it.tasklist == tasklist.uuid })
+            })
+        }
+
+        override suspend fun insertTask(task: Task) {
+            allTasks.add(task)
+        }
+
+        override suspend fun updateTask(task: Task) {
+            val indexOfItem = allTasks.indexOfFirst { it.uuid == task.uuid }
+            allTasks[indexOfItem] = task
+        }
+
+        override suspend fun deleteTask(task: Task) {
+            allTasks.removeIf { it.uuid == task.uuid }
+        }
+
+        override suspend fun insertTasklist(tasklist: Tasklist) {
+            allTasklists.add(tasklist)
+        }
+
+        override suspend fun updateTasklist(tasklist: Tasklist) {
+            val indexOfItem = allTasklists.indexOfFirst { it.uuid == tasklist.uuid }
+            allTasklists[indexOfItem] = tasklist
+        }
+
+        override suspend fun deleteTasklist(tasklist: Tasklist) {
+            allTasklists.removeIf { it.uuid == tasklist.uuid }
+        }
+}
+
 @Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun DefaultPreview() {
-    val uuid = UUID.randomUUID()
-    val uiState = TasklistUiState(
-        currentList = uuid,
-        availableTasklists = listOf(
-            TasklistWithTasks(
-                tasklist = Tasklist(uuid = uuid, name = "Einkaufen"),
-                tasks = listOf<Task>(
-                    Task(name = "Möhren", extra = "1kg"),
-                    Task(name = "Äpfel", extra = "3"),
-                    Task(name = "Taschentücher", extra = "1")
-                )
-            ),
-            TasklistWithTasks(
-                tasklist = Tasklist(name = "Asiamarkt"),
-                tasks = listOf<Task>(
-                    Task(name = "Sesamöl"),
-                    Task(name = "Sojasoße"),
-                    Task(name = "Tofu")
-                )
-            ),
-        )
+    val uuid1 = UUID.randomUUID()
+    val uuid2 = UUID.randomUUID()
+    val allTasklists = mutableListOf<Tasklist>(
+        Tasklist(uuid = uuid1, name = "Einkaufen"),
+        Tasklist(uuid = uuid2, name = "Asiamarkt")
     )
-    OrgaOwlTheme {
-        TasklistsDetailsView(uiState, {}, {}, {}, {}, {}, {})
-    }
+    val allTasks = mutableListOf<Task>(
+                Task(tasklist = uuid1, name = "Möhren", extra = "1kg"),
+                Task(tasklist = uuid1, name = "Äpfel", extra = "3"),
+                Task(tasklist = uuid1, name = "Taschentücher", extra = "1"),
+                Task(tasklist = uuid1, name = "Trauben", extra = "500g"),
+                Task(tasklist = uuid1, name = "Knäckebrot", extra = ""),
+                Task(tasklist = uuid1, name = "Zimt", extra = ""),
+                Task(tasklist = uuid1, name = "Kartoffeln", extra = "1kg"),
+                Task(tasklist = uuid1, name = "Zucchini", extra = ""),
+                Task(tasklist = uuid1, name = "Tomaten", extra = "3"),
+                Task(tasklist = uuid1, name = "Erdbeeren", extra = "500g"),
+                Task(tasklist = uuid1, name = "Mandeln", extra = "100g"),
+                Task(tasklist = uuid1, name = "Kohlrabi", extra = "1"),
+
+                Task(tasklist = uuid2, name = "Sesamöl"),
+                Task(tasklist = uuid2, name = "Sojasoße"),
+                Task(tasklist = uuid2, name = "Tofu")
+    )
+    val taskRepository = ListBackedTaskRepository(allTasklists = allTasklists, allTasks = allTasks)
+    val viewModel = TaskViewModel(taskRepository = taskRepository, savedStateHandle = SavedStateHandle())
+    App(viewModel)
 }
