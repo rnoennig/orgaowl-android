@@ -27,6 +27,12 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField(
+            "String",
+            "SERPLY_API_KEY",
+            "\"${project.findProperty("SERPLY_API_KEY")}\""
+        )
     }
 
     buildTypes {
@@ -47,6 +53,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.1"
@@ -95,7 +102,7 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
 
-    val lifecycle_version = "2.6.2"
+    val lifecycle_version = "2.8.4"
     val arch_version = "2.2.0"
 
     // ViewModel
@@ -137,6 +144,15 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.constraintlayout)
+
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+
+    // AsyncImage
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // rememberPermissionState
+    implementation("com.google.accompanist:accompanist-permissions:0.35.1-alpha")
 
     //implementation("androidx.compose.foundation:foundation")
 

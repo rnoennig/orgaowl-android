@@ -2,12 +2,18 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "0d13779d148a2d8ba05e5da6c48149ef",
+    "identityHash": "e4ea859216794f5c527b7447d1702797",
     "entities": [
       {
         "tableName": "Task",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uuid` BLOB NOT NULL, `name` TEXT NOT NULL, `extra` TEXT NOT NULL, `done` INTEGER NOT NULL, `modified_at` INTEGER NOT NULL, `tasklist` BLOB NOT NULL, PRIMARY KEY(`uuid`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uuid` BLOB NOT NULL, `name` TEXT NOT NULL, `extra` TEXT NOT NULL DEFAULT '', `done` INTEGER NOT NULL, `modified_at` INTEGER NOT NULL, `tasklist` BLOB NOT NULL, `imagepath` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`uuid`))",
         "fields": [
+          {
+            "fieldPath": "uuid",
+            "columnName": "uuid",
+            "affinity": "BLOB",
+            "notNull": true
+          },
           {
             "fieldPath": "name",
             "columnName": "name",
@@ -15,9 +21,16 @@
             "notNull": true
           },
           {
-            "fieldPath": "tasklist",
-            "columnName": "tasklist",
-            "affinity": "BLOB",
+            "fieldPath": "extra",
+            "columnName": "extra",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "done",
+            "columnName": "done",
+            "affinity": "INTEGER",
             "notNull": true
           },
           {
@@ -27,16 +40,17 @@
             "notNull": true
           },
           {
-            "fieldPath": "uuid",
-            "columnName": "uuid",
+            "fieldPath": "tasklist",
+            "columnName": "tasklist",
             "affinity": "BLOB",
             "notNull": true
           },
           {
-            "fieldPath": "done",
-            "columnName": "done",
-            "affinity": "INTEGER",
-            "notNull": true
+            "fieldPath": "imagePath",
+            "columnName": "imagepath",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
           }
         ],
         "primaryKey": {
@@ -84,7 +98,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '9d13779d148a2d8ba05e5da6c48149ef')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e4ea859216794f5c527b7447d1702797')"
     ]
   }
 }
