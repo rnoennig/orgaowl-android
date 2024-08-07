@@ -22,6 +22,7 @@ fun TasksListView(
     taskList: List<Task>,
     onTaskClick: (Task) -> Unit,
     onTaskLongClick: (Task) -> Unit,
+    onTaskDelete: (Task) -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier
 ) {
@@ -39,7 +40,9 @@ fun TasksListView(
             ListItem(
                 task,
                 onClick = { onTaskClick(task) },
-                onLongClick = { onTaskLongClick(task) }
+                onLongClick = { onTaskLongClick(task) },
+                onTaskMove = {},
+                onTaskDelete = { onTaskDelete(task) }
             )
             if (index < taskList.lastIndex)
                 HorizontalDivider(thickness = 1.dp)

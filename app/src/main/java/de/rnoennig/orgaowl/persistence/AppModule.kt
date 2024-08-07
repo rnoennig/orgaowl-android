@@ -7,8 +7,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import de.rnoennig.orgaowl.ITaskRepository
-import de.rnoennig.orgaowl.TaskRepository
+import de.rnoennig.orgaowl.model.ITaskRepository
+import de.rnoennig.orgaowl.model.TaskRepository
 import javax.inject.Singleton
 
 @Module

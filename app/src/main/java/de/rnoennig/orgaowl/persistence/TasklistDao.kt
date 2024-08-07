@@ -10,14 +10,6 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TasklistDao {
-    /*
-    @Query("SELECT * FROM Tasklist")
-    fun getAllTasklists(): Flow<List<Tasklist>>
-
-    @Transaction
-    @Query("SELECT * FROM Tasklist where name = :taskListName")
-    fun getTasklistWithTasks(taskListName: String): List<TasklistWithTasks>
-*/
 
     @Transaction
     @Query("SELECT * FROM Tasklist")
@@ -31,4 +23,7 @@ interface TasklistDao {
 
     @Delete
     fun deleteTasklist(tasklist: Tasklist)
+
+    @Query("SELECT * FROM Tasklist")
+    fun getAllTasklists(): List<Tasklist>
 }

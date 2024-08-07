@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import de.rnoennig.orgaowl.model.TaskViewModel
 import de.rnoennig.orgaowl.ui.theme.OrgaOwlTheme
 
@@ -11,9 +12,7 @@ import de.rnoennig.orgaowl.ui.theme.OrgaOwlTheme
  * Entry point, loads data and loads main screen
  */
 @Composable
-fun App(
-    viewModel: TaskViewModel
-) {
+fun App(viewModel: TaskViewModel) {
     val state = viewModel.uiState.collectAsStateWithLifecycle()
     OrgaOwlTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
@@ -27,6 +26,9 @@ fun App(
                 },
                 onUpdateTask = { newTaskDetails ->
                     viewModel.updateTask(newTaskDetails)
+                },
+                onDeleteTask = { task ->
+                    viewModel.deleteTask(task)
                 },
                 onTasklistAdd = { newTasklist ->
                     viewModel.addTasklist(newTasklist)

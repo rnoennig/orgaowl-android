@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.sp
 import de.rnoennig.orgaowl.R
 import de.rnoennig.orgaowl.persistence.Task
 import de.rnoennig.orgaowl.persistence.Tasklist
-import de.rnoennig.orgaowl.TasklistUiState
+import de.rnoennig.orgaowl.model.TasklistUiState
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -66,6 +66,7 @@ fun TasklistsDetailsView(
     onChangeCurrentTasklist: (UUID) -> Unit,
     onTaskAdd: (Task) -> Unit,
     onUpdateTask: (Task) -> Unit,
+    onDeleteTask: (Task) -> Unit,
     onTasklistAdd: (Tasklist) -> Unit,
     onTasklistUpdate: (Tasklist) -> Unit,
     onTasklistDelete: (Tasklist) -> Unit,
@@ -270,11 +271,6 @@ fun TasklistsDetailsView(
             TasksListView(
                 taskList,
                 onTaskClick = {
-                    //val idx = taskList.indexOf(it)
-                    //val new = taskList.get(idx)
-
-
-                    // update task via viewmodel
                     onUpdateTask.invoke(
                         it.copy(
                             done = !it.done,
@@ -292,6 +288,9 @@ fun TasklistsDetailsView(
 
                         null
                     }
+                },
+                onTaskDelete = { task ->
+                    onDeleteTask(task)
                 },
                 listState = listState,
                 modifier = modifier
