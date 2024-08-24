@@ -2,7 +2,6 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
 
-
     id("com.google.dagger.hilt.android")
     id("dagger.hilt.android.plugin")
     id("com.google.devtools.ksp")
@@ -68,6 +67,7 @@ android {
 
 dependencies {
     implementation("com.google.dagger:hilt-android:2.48.1")
+    implementation(libs.androidx.material3.android)
 
     //kapt("com.google.dagger:hilt-android-compiler:2.48.1")
     ksp("com.google.dagger:dagger-compiler:2.48.1") // Dagger compiler
@@ -103,7 +103,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
 
     val lifecycle_version = "2.8.4"
-    val arch_version = "2.2.0"
 
     // ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycle_version")
@@ -131,12 +130,6 @@ dependencies {
     // optional - ReactiveStreams support for LiveData
     //implementation("androidx.lifecycle:lifecycle-reactivestreams-ktx:$lifecycle_version")
 
-    // optional - Test helpers for LiveData
-    testImplementation("androidx.arch.core:core-testing:$arch_version")
-
-    // optional - Test helpers for Lifecycle runtime
-    testImplementation ("androidx.lifecycle:lifecycle-runtime-testing:$lifecycle_version")
-
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -152,7 +145,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     // rememberPermissionState
-    implementation("com.google.accompanist:accompanist-permissions:0.35.1-alpha")
+    implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
     //implementation("androidx.compose.foundation:foundation")
 
