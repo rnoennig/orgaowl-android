@@ -41,7 +41,6 @@ fun TasksListView(
                 task,
                 onClick = { onTaskClick(task) },
                 onLongClick = { onTaskLongClick(task) },
-                onTaskMove = {},
                 onTaskDelete = { onTaskDelete(task) }
             )
             if (index < taskList.lastIndex)

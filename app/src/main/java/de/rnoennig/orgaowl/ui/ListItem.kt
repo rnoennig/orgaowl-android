@@ -1,13 +1,15 @@
 package de.rnoennig.orgaowl.ui
 
+import android.content.res.Configuration
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,11 +30,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
@@ -41,17 +39,21 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import de.rnoennig.orgaowl.persistence.Task
+import de.rnoennig.orgaowl.ui.theme.OrgaOwlTheme
 import java.io.File
 import kotlin.math.roundToInt
 
+enum class DragValue { Start, Center }
+
 /**
- * Renders a single task item in the list
  * Renders a single task item in the list
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -60,11 +62,38 @@ fun ListItem(
     task: Task,
     onClick: ((Task) -> Unit)? = null,
     onLongClick: ((Task) -> Unit)? = null,
-    onTaskMove: ((Task) -> Unit)? = null,
     onTaskDelete: ((Task) -> Unit)? = null
 ) {
+    val density = LocalDensity.current
     val context = LocalContext.current
-    var offsetX by remember { mutableFloatStateOf(0f) }
+
+    val anchors = with(LocalDensity.current) {
+            DraggableAnchors {
+                DragValue.Start at -50.dp.toPx()
+                DragValue.Center at 0f
+            }
+        }
+
+    val state = remember { AnchoredDraggableState(
+        DragValue.Center,
+        anchors = anchors,
+        positionalThreshold = { distance: Float -> distance * 0.5f },
+        velocityThreshold = { with(density) { 100.dp.toPx() } },
+        animationSpec = tween(),
+        confirmValueChange = { newValue ->
+            when(newValue) {
+                DragValue.Start -> {
+                    onTaskDelete?.invoke(task)
+                }
+                DragValue.Center -> Unit
+            }
+            true
+        }
+    ) }
+    SideEffect {
+        state.updateAnchors(anchors)
+    }
+
     Box {
         Row {
             Spacer(Modifier.weight(1f))
@@ -91,18 +120,9 @@ fun ListItem(
                     onLongClick = { onLongClick?.invoke(task) }
                 )
                 .offset {
-                    IntOffset(
-                        offsetX
-                            .coerceIn(-50.dp.toPx(), 0f)
-                            .roundToInt(), 0
-                    )
+                    IntOffset(x = state.requireOffset().roundToInt(), y = 0)
                 }
-                .draggable(
-                    orientation = Orientation.Horizontal,
-                    state = rememberDraggableState { delta ->
-                        offsetX += delta
-                    }
-                )
+                .anchoredDraggable(state, Orientation.Horizontal, reverseDirection = false)
                 .padding(bottom = 6.dp)
         ) {
             Row {
@@ -148,5 +168,15 @@ fun ListItem(
                 )
             }
         }
+    }
+}
+
+@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun PreviewListView() {
+    OrgaOwlTheme {
+        ListItem(
+            task = Task(name = "Banana"),
+        )
     }
 }
