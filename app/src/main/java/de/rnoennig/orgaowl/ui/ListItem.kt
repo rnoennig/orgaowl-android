@@ -41,6 +41,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -64,6 +65,7 @@ fun ListItem(
     onLongClick: ((Task) -> Unit)? = null,
     onTaskDelete: ((Task) -> Unit)? = null
 ) {
+
     val density = LocalDensity.current
     val context = LocalContext.current
 
@@ -141,9 +143,11 @@ fun ListItem(
                             .width(50.dp)
                     )
                 }
+                // Task name
                 Text(
                     modifier = Modifier
                         .padding(horizontal = 16.dp)
+                        .weight(1f, true)
                         .height(80.dp)
                         .wrapContentHeight(),
                     text = task.name,
@@ -151,9 +155,10 @@ fun ListItem(
                         textDecoration = if (task.done) TextDecoration.LineThrough else TextDecoration.None,
                         fontSize = 24.sp,
                         color = if (task.done) LocalTextStyle.current.color.compositeOver(Color.Gray) else LocalTextStyle.current.color
-                    )
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.weight(1f))
                 Text(
                     text = task.extra,
                     modifier = Modifier
@@ -176,7 +181,7 @@ fun ListItem(
 fun PreviewListView() {
     OrgaOwlTheme {
         ListItem(
-            task = Task(name = "Banana", extra = "Bund"),
+            task = Task(name = "Banana is a good fruit, I like it very much, yes yes yes, it is really good", extra = "Bund"),
         )
     }
 }
