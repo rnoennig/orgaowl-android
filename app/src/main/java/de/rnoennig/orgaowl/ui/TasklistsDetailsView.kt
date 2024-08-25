@@ -145,14 +145,13 @@ fun TasklistsDetailsView(
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(
-                                onClick = { scope.launch { drawerState.open() } }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Menu,
-                                    contentDescription = "Show available lists"
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Filled.Menu,
+                                contentDescription = "Show available lists",
+                                modifier = Modifier
+                                    .padding(4.dp, 0.dp, 4.dp, 0.dp)
+                                    .clickable { scope.launch { drawerState.open() } }
+                            )
                             Text(
                                 text = (currentTasklist?.tasklist?.name ?: "") + if (uiState.value.isLoading) " (loading...)" else ""
                             )
