@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -165,15 +167,34 @@ fun TasklistsDetailsView(
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Menu,
-                                contentDescription = "Show available lists",
-                                modifier = Modifier
-                                    .padding(4.dp, 0.dp, 4.dp, 0.dp)
-                                    .clickable { scope.launch { drawerState.open() } }
-                            )
+                            val openItemCount = uiState.value.availableTasklists
+                                ?.filter { it.tasklist.uuid != currentTasklist?.tasklist?.uuid }
+                                ?.map { it.tasks.count { !it.done } }
+                                ?.sum() ?: 0
+                            BadgedBox(
+                                badge = {
+                                    if (openItemCount > 0) {
+                                        Badge(
+                                            modifier = Modifier
+                                        ) {
+                                            Text(
+                                                text = openItemCount.toString()
+                                            )
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Menu,
+                                    contentDescription = "Show available lists",
+                                    modifier = Modifier
+                                        .clickable { scope.launch { drawerState.open() } }
+                                )
+                            }
                             Text(
-                                text = (currentTasklist?.tasklist?.name ?: "") + if (uiState.value.isLoading) " (loading...)" else ""
+                                text = (currentTasklist?.tasklist?.name
+                                    ?: "") + if (uiState.value.isLoading) " (loading...)" else "",
+                                modifier = Modifier.padding(14.dp, 0.dp, 0.dp, 0.dp)
                             )
                             DropdownMenu(
                                 expanded = showDropDown.value,
