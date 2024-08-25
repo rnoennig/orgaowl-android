@@ -92,7 +92,7 @@ fun TasklistsDetailsView(
     val addUpdateTaskDialogCallback = remember { mutableStateOf({ task: Task -> null }) }
     val addUpdateTasklistDialogCallback = remember { mutableStateOf({ task: Tasklist -> null }) }
     val showDropDown = remember { mutableStateOf(false) }
-    val drawerState: DrawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerState: DrawerState = rememberDrawerState(DrawerValue.Open)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val fabVisibility by remember {
@@ -116,11 +116,17 @@ fun TasklistsDetailsView(
                 Column {
                     uiState.value.availableTasklists?.forEach { availableTasklist ->
                         val openItemCount = availableTasklist.tasks.count { !it.done }
-                        BadgedBox(
+                        NavigationDrawerItem(
+                            label = { Text(text = availableTasklist.tasklist.name) },
+                            selected = availableTasklist.tasklist.uuid == uiState.value.currentList,
+                            onClick = {
+                                onChangeCurrentTasklist.invoke(availableTasklist.tasklist.uuid)
+                                scope.launch { drawerState.close() }
+                            },
                             badge = {
                                 if (openItemCount > 0) {
                                     Badge(
-                                        modifier = Modifier.size(36.dp)
+                                        modifier = Modifier.size(24.dp)
                                     ) {
                                         Text(
                                             text = openItemCount.toString(),
@@ -128,17 +134,9 @@ fun TasklistsDetailsView(
                                         )
                                     }
                                 }
-                            }
-                        ) {
-                            NavigationDrawerItem(
-                                label = { Text(text = availableTasklist.tasklist.name) },
-                                selected = availableTasklist.tasklist.uuid == uiState.value.currentList,
-                                onClick = {
-                                    onChangeCurrentTasklist.invoke(availableTasklist.tasklist.uuid)
-                                    scope.launch { drawerState.close() }
-                                }
-                            )
-                        }
+                            },
+                            shape = MaterialTheme.shapes.medium
+                        )
                     }
                 }
                 Image(
