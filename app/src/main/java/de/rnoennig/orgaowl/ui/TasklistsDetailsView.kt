@@ -327,3 +327,9 @@ fun TasklistsDetailsView(
         }
     }
 }
+
+@MyPreview
+@Composable
+fun TasklistsDetailsViewPreview() {
+    AppPreview()
+}
