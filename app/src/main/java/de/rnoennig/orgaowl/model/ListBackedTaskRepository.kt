@@ -3,17 +3,9 @@ package de.rnoennig.orgaowl.model
 import de.rnoennig.orgaowl.persistence.Task
 import de.rnoennig.orgaowl.persistence.Tasklist
 import de.rnoennig.orgaowl.persistence.TasklistWithTasks
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.shareIn
 
 class ListBackedTaskRepository(
     private val allTasklists: MutableList<Tasklist> = mutableListOf(),
