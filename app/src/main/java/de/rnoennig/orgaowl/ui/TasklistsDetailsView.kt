@@ -7,17 +7,25 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
@@ -27,6 +35,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumTouchTargetEnforcement
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -37,6 +46,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -111,14 +121,30 @@ fun TasklistsDetailsView(
                 HorizontalDivider()
                 Column {
                     uiState.value.availableTasklists?.forEach { availableTasklist ->
-                        NavigationDrawerItem(
-                            label = { Text(text = availableTasklist.tasklist.name) },
-                            selected = availableTasklist.tasklist.uuid == uiState.value.currentList,
-                            onClick = {
-                                onChangeCurrentTasklist.invoke(availableTasklist.tasklist.uuid)
-                                scope.launch { drawerState.close() }
+                        val openItemCount = availableTasklist.tasks.count { !it.done }
+                        BadgedBox(
+                            badge = {
+                                if (openItemCount > 0) {
+                                    Badge(
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Text(
+                                            text = openItemCount.toString(),
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
                             }
-                        )
+                        ) {
+                            NavigationDrawerItem(
+                                label = { Text(text = availableTasklist.tasklist.name) },
+                                selected = availableTasklist.tasklist.uuid == uiState.value.currentList,
+                                onClick = {
+                                    onChangeCurrentTasklist.invoke(availableTasklist.tasklist.uuid)
+                                    scope.launch { drawerState.close() }
+                                }
+                            )
+                        }
                     }
                 }
                 Image(
