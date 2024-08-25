@@ -162,8 +162,8 @@ fun ListItem(
                         .wrapContentHeight(),
                     style = LocalTextStyle.current.copy(
                         textDecoration = if (task.done) TextDecoration.LineThrough else TextDecoration.None,
-                        fontSize = 24.sp,
-                        color = if (task.done) LocalTextStyle.current.color.compositeOver(Color.Gray) else LocalTextStyle.current.color
+                        fontSize = 18.sp,
+                        color = if (task.done) LocalTextStyle.current.color.compositeOver(Color.Gray) else LocalTextStyle.current.color.compositeOver(Color.LightGray)
                     )
                 )
             }
@@ -176,7 +176,7 @@ fun ListItem(
 fun PreviewListView() {
     OrgaOwlTheme {
         ListItem(
-            task = Task(name = "Banana"),
+            task = Task(name = "Banana", extra = "Bund"),
         )
     }
 }
